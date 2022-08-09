@@ -46,6 +46,9 @@ executors:
     docker:
       - image: cimg/node:16.10
     working_directory: ~/repo
+  terraform-executor:
+    docker:
+      - image: hashicorp/terraform:latest
 
 aliases:
   - &show_current_branch
@@ -89,14 +92,64 @@ jobs:
       - checkout
       - *show_current_branch
       - *restore_cache
+      - run:
+          name: Create artifacts folder
+          command: mkdir -p artifacts
       - *install_dependencies
       - *save_cache
-      
+      - run:
+          name: Copy infrastructure folder
+          command: cp -r infrastructure artifacts/infrastructure
+      - persist_to_workspace:
+          root: ./
+          paths:
+            - artifacts
+
+  terraform-validate:
+    executor: terraform-executor
+    steps:
+      - checkout
+      - *show_current_branch
+      - run:
+          name: Terraform validate and format
+          command: |
+            cd infrastructure/   
+            terraform init --backend=false
+            terraform validate
+            terraform fmt --check
+
+  terraform-plan-and-apply:
+    executor: terraform-executor
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ./
+      - *show_current_branch
+      - run:
+          name: Terraform plan
+          command: |
+            cd artifacts/infrastructure/   
+            terraform init
+            terraform select ${CIRCLE_BRANCH} || terraform workspace new ${CIRCLE_BRANCH}
+            terrafprm plan
+      - run:
+          name: Terraform apply
+          command: |
+            cd artifacts/infrastructure/
+            terraform select ${CIRCLE_BRANCH}
+            terraform apply --auto-approve
+            terraform output cinema_app_bucket_name > ../cinema_bucket_name.txt
+      - persist_to_workspace:
+        root: ./
+        paths:
+          - artifacts
 
   deploy-to-aws-s3:
     executor: app-executor
     steps:
       - checkout
+      - attach_workspace:
+          at: ./
       - *show_current_branch
       - *install_aws_cli
       - *install_dependencies
@@ -104,25 +157,69 @@ jobs:
       - run:
           name: Deploy to AWS s3
           command: |
-            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
-            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+            AWS_BUCKET_NAME=$( cat artifacts/cinema_bucket_name.txt | sed 's/\"//g' )
+            echo $AWS_BUCKET_NAME
             if [ "${CIRCLE_BRANCH}" == "main" ]
             then
-              aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_PRODUCTION_BUCKET} --delete
+              aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_NAME} --delete
             elif [ "${CIRCLE_BRANCH}" == "staging" ]
             then
-              aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_STAGING_BUCKET} --delete
+              aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_NAME} --delete
             else
-              aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_DEV_BUCKET} --delete
+              aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_NAME} --delete
             fi
+
+  terraform-destroy:
+    executor: terraform-executor
+    steps:
+      - checkout
+      - *show_current_branch
+      - run:
+          name: Terraform destroy
+          command: |
+            cd infrastructure/
+            terraform init
+            terraform workspace select ${CIRCLE_BRANCH} || terraform workspace new ${CIRCLE_BRANCH}
+            terraform destroy --auto-approve
 
 workflows:
   build_and_deploy:
     jobs:
       - build
-      - deploy-to-aws-s3:
+      - terraform-validate:
           requires:
             - build
+          filters:
+            branches:
+              only:
+                - develop
+                - staging
+                - main
+      - terraform-plan-and-apply:
+          requires:
+            - terraform-validate
+          filters:
+            branches:
+              only:
+                - develop
+                - staging
+                - main
+      - deploy-to-aws-s3:
+          requires:
+            - terraform-plan-and-apply
+          filters:
+            branches:
+              only:
+                - develop
+                - staging
+                - main
+      - hold:
+          type: approval
+          requires:
+            - deploy-to-aws-s3
+      - terraform-destroy:
+          requires:
+            - hold
           filters:
             branches:
               only:
