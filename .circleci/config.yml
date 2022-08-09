@@ -136,7 +136,7 @@ jobs:
           name: Terraform apply
           command: |
             cd artifacts/infrastructure/
-            terraform select ${CIRCLE_BRANCH}
+            terraform workspace select ${CIRCLE_BRANCH}
             terraform apply --auto-approve
             terraform output cinema_app_bucket_name > ../cinema_bucket_name.txt
       - persist_to_workspace:
