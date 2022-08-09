@@ -101,7 +101,7 @@ jobs:
           name: Copy infrastructure folder
           command: cp -r infrastructure artifacts/infrastructure
       - persist_to_workspace:
-          root: ./
+          root: .
           paths:
             - artifacts
 
@@ -123,7 +123,7 @@ jobs:
     steps:
       - checkout
       - attach_workspace:
-          at: ./
+          at: .
       - *show_current_branch
       - run:
           name: Terraform plan
@@ -140,7 +140,7 @@ jobs:
             terraform apply --auto-approve
             terraform output cinema_app_bucket_name > ../cinema_bucket_name.txt
       - persist_to_workspace:
-        root: ./
+        root: .
         paths:
           - artifacts
 
@@ -149,7 +149,7 @@ jobs:
     steps:
       - checkout
       - attach_workspace:
-          at: ./
+          at: .
       - *show_current_branch
       - *install_aws_cli
       - *install_dependencies
