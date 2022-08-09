@@ -140,9 +140,9 @@ jobs:
             terraform apply --auto-approve
             terraform output cinema_app_bucket_name > ../cinema_bucket_name.txt
       - persist_to_workspace:
-        root: .
-        paths:
-          - artifacts
+          root: .
+          paths:
+            - artifacts
 
   deploy-to-aws-s3:
     executor: app-executor
