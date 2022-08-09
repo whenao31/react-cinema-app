@@ -40,51 +40,67 @@ version: 2.1
 #       - build-and-test
 #       # For running simple node tests, you could optionally use the node/test job from the orb to replicate and replace the job above in fewer lines.
 #       # - node/test
+
+executors:
+  app-executor:
+    docker:
+      - image: cimg/node:16.10
+    working_directory: ~/repo
+
+aliases:
+  - &show_current_branch
+    - run:
+        name: Show current branch
+        command: echo ${CIRCLE_BRANCH}
+  - &restore_cache
+    - restore_cache:
+        keys:
+          - app-{{ checksum "package.json" }}
+          - app-
+  - &install_dependencies
+    - run:
+        name: Install dependencies
+        command: npm install
+  - &save_cache
+    - save_cache:
+        paths:
+          - node_modules
+        key: app-{{ checksum "package.json" }}
+  - &install_aws_cli
+    - run:
+        name: Installing AWS CLI
+        command: |
+          sudo apt-get -y -qq update
+          sudo apt-get install -y awscli
+          sudo apt-get install -y python3-pip python-dev build-essential
+  - &build_project
+    - run:
+        name: Build project
+        command: |
+          npm run build
+          cd build
+          zip ../build.zip -r * .[^.]*
+          echo "Build successful"
+
 jobs:
   build:
-    docker:
-      - image: cimg/node:16.10
-    working_directory: ~/repo
+    executor: app-executor
     steps:
       - checkout
-      - run:
-          name: Show current branch
-          command: echo ${CIRCLE_BRANCH}
-      - restore_cache:
-          keys:
-            - app-{{ checksum "package.json" }}
-            - app-
-      - run:
-          name: Install dependencies
-          command: npm install
-      - save_cache:
-          paths:
-            - node_modules
-          key: app-{{ checksum "package.json" }}
+      - *show_current_branch
+      - *restore_cache
+      - *install_dependencies
+      - *save_cache
+      
 
   deploy-to-aws-s3:
-    docker:
-      - image: cimg/node:16.10
-    working_directory: ~/repo
+    executor: app-executor
     steps:
       - checkout
-      - run:
-          name: Show current branch
-          command: echo ${CIRCLE_BRANCH}
-      - run:
-          name: Installing AWS CLI
-          command: |
-            sudo apt-get -y -qq update
-            sudo apt-get install -y awscli
-            sudo apt-get install -y python3-pip python-dev build-essential
-      - run:
-          name: Build project
-          command: |
-            npm install
-            npm run build
-            cd build
-            zip ../build.zip -r * .[^.]*
-            echo "Build successful"
+      - *show_current_branch
+      - *install_aws_cli
+      - *install_dependencies
+      - *build_project
       - run:
           name: Deploy to AWS s3
           command: |
