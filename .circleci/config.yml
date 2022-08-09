@@ -83,7 +83,7 @@ jobs:
             npm install
             npm run build
             cd build
-            zip ../buil.zip -r * .[^.]*
+            zip ../build.zip -r * .[^.]*
             echo "Build successful"
       - run:
           name: Deploy to AWS s3
