@@ -1,4 +1,4 @@
-# Getting Started with Create React App
+# Getting Started with Create React App and Demostration on GCP one way-sync
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
